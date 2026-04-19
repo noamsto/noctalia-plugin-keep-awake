@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import qs.Services.Power
 
 Item {
   id: root
@@ -13,6 +14,27 @@ Item {
   property var endEpoch: null  // null for unlimited, number otherwise
   property int remainingSeconds: 0
   property bool thermalGuardActive: false
+
+  // --- Idle inhibitor (full scope only) ---
+  property bool _idleHeld: false
+
+  onActiveChanged: _syncIdle()
+  onScopeChanged: _syncIdle()
+
+  function _syncIdle() {
+    const shouldHold = active && scope === "full";
+    if (shouldHold && !_idleHeld) {
+      IdleInhibitorService.addInhibitor("keep-awake-plus", "Keep Awake+ full scope");
+      _idleHeld = true;
+    } else if (!shouldHold && _idleHeld) {
+      IdleInhibitorService.removeInhibitor("keep-awake-plus");
+      _idleHeld = false;
+    }
+  }
+
+  Component.onDestruction: {
+    if (_idleHeld) IdleInhibitorService.removeInhibitor("keep-awake-plus");
+  }
 
   // --- Settings (from manifest metadata + pluginApi overrides) ---
   property var cfg: pluginApi?.pluginSettings || ({})
