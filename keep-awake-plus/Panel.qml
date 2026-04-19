@@ -1,5 +1,4 @@
 import QtQuick
-import QtQuick.Controls
 import QtQuick.Layouts
 import Quickshell
 import qs.Commons
@@ -9,8 +8,8 @@ Item {
   id: root
   property var pluginApi: null
   readonly property var geometryPlaceholder: panelContainer
-  property real contentPreferredWidth: 320 * Style.uiScaleRatio
-  property real contentPreferredHeight: 420 * Style.uiScaleRatio
+  property real contentPreferredWidth: 360 * Style.uiScaleRatio
+  property real contentPreferredHeight: 480 * Style.uiScaleRatio
   readonly property var mainInstance: pluginApi?.mainInstance
   readonly property bool allowAttach: true
 
@@ -26,6 +25,13 @@ Item {
     }
   }
 
+  function formatDuration(minutes) {
+    if (minutes === -1) return "∞";
+    if (minutes < 60) return minutes + "m";
+    if (minutes % 60 === 0) return (minutes / 60) + "h";
+    return Math.floor(minutes / 60) + "h" + (minutes % 60) + "m";
+  }
+
   Rectangle {
     id: panelContainer
     anchors.fill: parent
@@ -36,7 +42,7 @@ Item {
       anchors.margins: Style.marginM
       spacing: Style.marginM
 
-      // --- Header ---
+      // ─────────────────── Header ───────────────────
       NBox {
         Layout.fillWidth: true
         Layout.preferredHeight: headerCol.implicitHeight + Style.marginM * 2
@@ -45,123 +51,220 @@ Item {
           id: headerCol
           anchors.fill: parent
           anchors.margins: Style.marginM
-          spacing: Style.marginXS
+          spacing: Style.marginS
 
           RowLayout {
+            Layout.fillWidth: true
             spacing: Style.marginS
+
             NIcon {
               icon: mainInstance?.active ? "coffee" : "coffee-off"
-              color: (mainInstance?.active && mainInstance.scope === "full") ? Color.mPrimary : Color.mOnSurface
               pointSize: Style.fontSizeL
+              color: mainInstance?.active
+                ? (mainInstance.scope === "full" ? Color.mPrimary : Color.mSecondary)
+                : Color.mOnSurfaceVariant
             }
+
             NText {
               Layout.fillWidth: true
               text: "Keep Awake"
-              font.weight: Style.fontWeightBold
               pointSize: Style.fontSizeL
+              font.weight: Style.fontWeightBold
               color: Color.mOnSurface
             }
+
+            // Status pill
+            Rectangle {
+              visible: mainInstance?.active ?? false
+              Layout.alignment: Qt.AlignVCenter
+              implicitWidth: statusText.implicitWidth + Style.marginM * 2
+              implicitHeight: statusText.implicitHeight + Style.marginXS * 2
+              radius: height / 2
+              color: Qt.alpha(
+                mainInstance?.scope === "full" ? Color.mPrimary : Color.mSecondary,
+                0.15
+              )
+
+              NText {
+                id: statusText
+                anchors.centerIn: parent
+                text: (mainInstance?.scope || "") + " · " + (mainInstance?.formatRemaining() || "")
+                pointSize: Style.fontSizeXS
+                font.weight: Style.fontWeightMedium
+                color: mainInstance?.scope === "full" ? Color.mPrimary : Color.mSecondary
+              }
+            }
           }
+
           NText {
-            text: mainInstance?.active
-                    ? mainInstance.scope + " · " + mainInstance.formatRemaining() + " remaining"
-                    : "off"
-            color: Qt.alpha(Color.mOnSurface, 0.7)
+            Layout.fillWidth: true
+            visible: !(mainInstance?.active ?? false)
+            text: "Off"
             pointSize: Style.fontSizeS
+            color: Color.mOnSurfaceVariant
           }
         }
       }
 
-      // --- Scope segmented control ---
-      NBox {
+      // ─────── Active-session banner (visible only when active) ───────
+      Rectangle {
         Layout.fillWidth: true
-        Layout.preferredHeight: scopeRow.implicitHeight + Style.marginM * 2
+        Layout.preferredHeight: activeRow.implicitHeight + Style.marginM * 2
+        visible: mainInstance?.active ?? false
+        color: Qt.alpha(Color.mPrimary, 0.08)
+        radius: Style.radiusM
+        border.width: 1
+        border.color: Qt.alpha(Color.mPrimary, 0.25)
 
         RowLayout {
-          id: scopeRow
+          id: activeRow
           anchors.fill: parent
           anchors.margins: Style.marginM
+          spacing: Style.marginM
+
+          NIcon {
+            icon: "clock"
+            pointSize: Style.fontSizeM
+            color: Color.mPrimary
+          }
+
+          ColumnLayout {
+            Layout.fillWidth: true
+            spacing: 2
+
+            NText {
+              text: (mainInstance?.formatRemaining() || "") + " remaining"
+              pointSize: Style.fontSizeM
+              font.weight: Style.fontWeightSemiBold
+              color: Color.mOnSurface
+            }
+
+            NText {
+              text: "Thermal guard: " + (mainInstance?.thermalGuardActive ? "active" : "off")
+              pointSize: Style.fontSizeXS
+              color: Color.mOnSurfaceVariant
+            }
+          }
+        }
+      }
+
+      // ─────────────────── Scope ───────────────────
+      ColumnLayout {
+        Layout.fillWidth: true
+        spacing: Style.marginS
+
+        RowLayout {
+          Layout.fillWidth: true
+          spacing: Style.marginS
+          NIcon { icon: "settings"; pointSize: Style.fontSizeS; color: Color.mOnSurfaceVariant }
+          NText {
+            text: "Scope"
+            pointSize: Style.fontSizeS
+            font.weight: Style.fontWeightMedium
+            color: Color.mOnSurfaceVariant
+          }
+        }
+
+        RowLayout {
+          Layout.fillWidth: true
           spacing: Style.marginS
 
-          NText { text: "Scope:"; color: Color.mOnSurface }
-
-          Button {
-            text: "Partial"
+          NButton {
             Layout.fillWidth: true
-            checkable: true
-            checked: root.selectedScope === "partial"
+            text: "Partial"
+            icon: "moon"
+            tooltipText: "Suspend + lid inhibit · monitor may sleep"
+            outlined: root.selectedScope !== "partial"
+            backgroundColor: Color.mSecondary
+            textColor: Color.mOnSecondary
             onClicked: root.selectedScope = "partial"
           }
-          Button {
-            text: "Full"
+          NButton {
             Layout.fillWidth: true
-            checkable: true
-            checked: root.selectedScope === "full"
+            text: "Full"
+            icon: "sun"
+            tooltipText: "Block everything — monitor stays on"
+            outlined: root.selectedScope !== "full"
+            backgroundColor: Color.mPrimary
+            textColor: Color.mOnPrimary
             onClicked: root.selectedScope = "full"
           }
         }
       }
 
-      // --- Duration grid ---
-      NBox {
+      // ─────────────────── Duration ───────────────────
+      ColumnLayout {
         Layout.fillWidth: true
         Layout.fillHeight: true
+        spacing: Style.marginS
 
-        ColumnLayout {
-          anchors.fill: parent
-          anchors.margins: Style.marginM
+        RowLayout {
+          Layout.fillWidth: true
           spacing: Style.marginS
+          NIcon { icon: "hourglass"; pointSize: Style.fontSizeS; color: Color.mOnSurfaceVariant }
+          NText {
+            text: "Duration"
+            pointSize: Style.fontSizeS
+            font.weight: Style.fontWeightMedium
+            color: Color.mOnSurfaceVariant
+          }
+        }
 
-          NText { text: "Duration"; color: Color.mOnSurface }
+        GridLayout {
+          columns: 3
+          rowSpacing: Style.marginS
+          columnSpacing: Style.marginS
+          Layout.fillWidth: true
 
-          GridLayout {
-            id: grid
-            columns: 3
-            rowSpacing: Style.marginS
-            columnSpacing: Style.marginS
-            Layout.fillWidth: true
-
-            Repeater {
-              model: {
-                const base = mainInstance ? mainInstance.durations.slice() : [30, 60, 120, 240, 480];
-                const labels = base.map(m => {
-                  return { minutes: m, label: m < 60 ? (m + "m") : (m % 60 === 0 ? (m/60 + "h") : (Math.floor(m/60) + "h" + (m%60) + "m")) };
-                });
-                if (mainInstance?.includeUnlimited) labels.push({ minutes: -1, label: "∞" });
-                return labels;
-              }
-              delegate: Button {
-                Layout.fillWidth: true
-                text: modelData.label
-                highlighted: mainInstance?.active && (
-                  (modelData.minutes === -1 && mainInstance.endEpoch === null) ||
-                  (modelData.minutes !== -1 && mainInstance.durationLabel === modelData.label)
-                )
-                onClicked: {
-                  const seconds = (modelData.minutes === -1) ? -1 : modelData.minutes * 60;
-                  mainInstance.start(seconds, root.selectedScope);
-                }
+          Repeater {
+            model: {
+              const base = mainInstance ? mainInstance.durations.slice() : [30, 60, 120, 240, 480];
+              const labels = base.map(m => ({ minutes: m, label: root.formatDuration(m) }));
+              if (mainInstance?.includeUnlimited) labels.push({ minutes: -1, label: "∞" });
+              return labels;
+            }
+            delegate: NButton {
+              Layout.fillWidth: true
+              text: modelData.label
+              readonly property bool isActive: mainInstance?.active && (
+                (modelData.minutes === -1 && mainInstance.endEpoch === null) ||
+                (modelData.minutes !== -1 && mainInstance.durationLabel === modelData.label)
+              )
+              outlined: !isActive
+              backgroundColor: root.selectedScope === "full" ? Color.mPrimary : Color.mSecondary
+              textColor: root.selectedScope === "full" ? Color.mOnPrimary : Color.mOnSecondary
+              onClicked: {
+                const seconds = (modelData.minutes === -1) ? -1 : modelData.minutes * 60;
+                mainInstance.start(seconds, root.selectedScope);
               }
             }
           }
         }
       }
 
-      // --- Secondary actions ---
+      // ─────────────────── Bottom actions ───────────────────
       RowLayout {
         Layout.fillWidth: true
         spacing: Style.marginS
 
-        Button {
+        NButton {
           Layout.fillWidth: true
-          text: "+" + (mainInstance?.quickExtendMinutes ?? 30) + "m extend"
-          enabled: mainInstance?.active && mainInstance.endEpoch !== null
+          text: "+" + (mainInstance?.quickExtendMinutes ?? 30) + "m"
+          icon: "clock-plus"
+          outlined: true
+          backgroundColor: Color.mPrimary
+          textColor: Color.mOnPrimary
+          enabled: (mainInstance?.active ?? false) && mainInstance.endEpoch !== null
           onClicked: mainInstance.extend((mainInstance.quickExtendMinutes ?? 30) * 60)
         }
-        Button {
+
+        NButton {
           Layout.fillWidth: true
           text: "Disable"
-          enabled: mainInstance?.active
+          icon: "player-stop"
+          backgroundColor: Color.mError
+          textColor: Color.mOnError
+          enabled: mainInstance?.active ?? false
           onClicked: mainInstance.off()
         }
       }
