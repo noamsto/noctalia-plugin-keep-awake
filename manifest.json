@@ -1,0 +1,29 @@
+{
+  "id": "keep-awake-plus",
+  "name": "Keep Awake+",
+  "version": "0.1.0",
+  "minNoctaliaVersion": "3.6.0",
+  "author": "Noam Stolero",
+  "official": false,
+  "license": "MIT",
+  "repository": "https://github.com/noamsto/noctalia-plugin-keep-awake",
+  "description": "Duration+scope Keep Awake with persistent last-choice and partial/full inhibit modes.",
+  "tags": ["Bar", "Power", "KeepAwake"],
+  "entryPoints": {
+    "main": "Main.qml",
+    "barWidget": "BarWidget.qml",
+    "panel": "Panel.qml",
+    "settings": "Settings.qml"
+  },
+  "dependencies": { "plugins": [] },
+  "metadata": {
+    "defaultSettings": {
+      "defaultScope": "partial",
+      "durations": [30, 60, 120, 240, 480],
+      "includeUnlimited": true,
+      "showRemainingText": true,
+      "activateOnLeftClick": false,
+      "quickExtendMinutes": 30
+    }
+  }
+}
