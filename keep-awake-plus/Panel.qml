@@ -50,7 +50,7 @@ Item {
           RowLayout {
             spacing: Style.marginS
             NIcon {
-              icon: mainInstance?.active ? "coffee" : "coffee-outline"
+              icon: mainInstance?.active ? "coffee" : "coffee-off"
               color: (mainInstance?.active && mainInstance.scope === "full") ? Color.mPrimary : Color.mOnSurface
               pointSize: Style.fontSizeL
             }

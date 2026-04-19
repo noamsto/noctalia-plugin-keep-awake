@@ -59,7 +59,7 @@ Item {
       spacing: Style.marginXS
 
       NIcon {
-        icon: root.active ? "coffee" : "coffee-outline"
+        icon: root.active ? "coffee" : "coffee-off"
         color: (root.active && root.scope === "full") ? Color.mPrimary : Color.mOnSurface
         pointSize: Style.fontSizeM
       }
