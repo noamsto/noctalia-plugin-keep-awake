@@ -114,14 +114,21 @@ Item {
   }
 
   // --- Actions (invoked by BarWidget / Panel) ---
-  function start(durationSeconds, pickScope) {
+  // `silent` suppresses the shell-script notification. Used by the panel when
+  // reconfiguring an already-active session (changing duration or scope) so
+  // the user doesn't get a toast per click.
+  function start(durationSeconds, pickScope, silent) {
     const durArg = (durationSeconds === -1) ? "unlimited" : String(durationSeconds);
-    Quickshell.execDetached(["system-awake", "start", durArg, "--scope=" + pickScope]);
+    const args = ["system-awake", "start", durArg, "--scope=" + pickScope];
+    if (silent) args.push("--silent");
+    Quickshell.execDetached(args);
     Qt.callLater(() => { statusProc.running = true; });
   }
 
-  function off() {
-    Quickshell.execDetached(["system-awake", "off"]);
+  function off(silent) {
+    const args = ["system-awake", "off"];
+    if (silent) args.push("--silent");
+    Quickshell.execDetached(args);
     Qt.callLater(() => { statusProc.running = true; });
   }
 
