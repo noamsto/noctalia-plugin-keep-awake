@@ -144,6 +144,20 @@ Item {
   // All shell invocations pass --silent; state-change toasts are fired from
   // `onActiveChanged` above so they trigger for external `system-awake`
   // callers too (CLI, keybind) without the shell also firing notify-send.
+  // Mirrors the shell's format_label so the optimistic durationLabel
+  // matches what the next poll will write — otherwise the panel's
+  // label-based minutes match fails briefly during reconfigure.
+  function _shellLabel(seconds) {
+    if (seconds === -1) return "∞";
+    if (seconds >= 3600) {
+      const h = Math.floor(seconds / 3600);
+      const m = Math.floor((seconds % 3600) / 60);
+      if (m === 0) return h + "h";
+      return h + "h" + (m < 10 ? "0" + m : m) + "m";
+    }
+    return Math.floor(seconds / 60) + "m";
+  }
+
   function start(durationSeconds, pickScope) {
     // `timeout 0s` in GNU coreutils means unlimited, so reject any
     // non-positive duration except the explicit -1 "unlimited" sentinel.
@@ -154,11 +168,25 @@ Item {
     }
     const durArg = (d === -1) ? "unlimited" : String(Math.floor(d));
     root._lastStartMs = Date.now();
+
+    // Optimistic update: reflect the new state immediately so the bar
+    // icon color + countdown update on click, not 100-300ms later when
+    // the shell finishes writing state.json. The next poll confirms.
+    root.scope = pickScope;
+    root.durationLabel = _shellLabel(d);
+    root.endEpoch = (d === -1) ? null : Math.floor(Date.now() / 1000) + Math.floor(d);
+    root.active = true;
+
     Quickshell.execDetached(["system-awake", "start", durArg, "--scope=" + pickScope, "--silent"]);
     Qt.callLater(root._pollStatus);
   }
 
   function off() {
+    // Optimistic update so the bar widget flips to "off" immediately.
+    root.scope = "";
+    root.durationLabel = "";
+    root.endEpoch = null;
+    root.active = false;
     Quickshell.execDetached(["system-awake", "off", "--silent"]);
     Qt.callLater(root._pollStatus);
   }
