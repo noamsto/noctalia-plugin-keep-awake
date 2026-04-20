@@ -36,7 +36,9 @@ Item {
     icon: root.active ? "coffee" : "coffee-off"
     text: (root.active && root.showText) ? root.remainingText : ""
     tooltipText: root.buildTooltip()
-    customIconColor: (root.active && root.scope === "full") ? Color.mPrimary : Color.mOnSurface
+    customIconColor: root.active
+      ? (root.scope === "full" ? Color.mPrimary : Color.mSecondary)
+      : Color.mOnSurface
     oppositeDirection: BarService.getPillDirection(root)
     onClicked: {
       if (root.activateOnLeftClick) {
