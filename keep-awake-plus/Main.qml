@@ -192,12 +192,20 @@ Item {
   }
 
   function extend(seconds) {
-    Quickshell.execDetached(["system-awake", "extend", String(seconds)]);
+    // extend also briefly looks inactive to a status poll (shell pkills the
+    // old inhibitor before spawning the new one), so reuse the same debounce.
+    root._lastStartMs = Date.now();
+    if (root.active && root.endEpoch !== null) {
+      root.endEpoch = root.endEpoch + Math.floor(seconds);
+    }
+    Quickshell.execDetached(["system-awake", "extend", String(seconds), "--silent"]);
+    const mins = Math.floor(seconds / 60);
+    ToastService.showNotice("Keep Awake extended", "+" + mins + "m", "clock-plus");
     Qt.callLater(root._pollStatus);
   }
 
   function toggleLast() {
-    Quickshell.execDetached(["system-awake", "toggle-last"]);
+    Quickshell.execDetached(["system-awake", "toggle-last", "--silent"]);
     Qt.callLater(root._pollStatus);
   }
 
