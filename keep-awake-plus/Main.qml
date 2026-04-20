@@ -20,6 +20,12 @@ Item {
   // already running when the shell starts doesn't spuriously "enable" us.
   property bool _firstStatusApplied: false
 
+  // Unix-ms timestamp of the last `start` issued by this plugin. Used to
+  // suppress the transient active=false window during a reconfigure
+  // (the shell's cleanup_inactive removes state.json before writing the
+  // new one), which otherwise makes the widget flicker off→on.
+  property real _lastStartMs: 0
+
   // Derived from endEpoch so the countdown ticks with the global Time singleton
   // (free clock-skew / resume handling).
   readonly property int remainingSeconds: {
@@ -117,6 +123,10 @@ Item {
     // `active` flipped true before `endEpoch` updates, the stale null
     // would briefly surface as ∞ in bindings and `onActiveChanged`.
     if (!s.active) {
+      // Reconfigure race: if we just issued `start` while active, the shell
+      // briefly tears state down before writing the new state. Ignore the
+      // transient off window so the bar widget doesn't flicker.
+      if (root.active && (Date.now() - root._lastStartMs) < 2000) return;
       root.scope = "";
       root.durationLabel = "";
       root.endEpoch = null;
@@ -143,6 +153,7 @@ Item {
       return;
     }
     const durArg = (d === -1) ? "unlimited" : String(Math.floor(d));
+    root._lastStartMs = Date.now();
     Quickshell.execDetached(["system-awake", "start", durArg, "--scope=" + pickScope, "--silent"]);
     Qt.callLater(root._pollStatus);
   }
