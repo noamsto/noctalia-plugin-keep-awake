@@ -3,6 +3,7 @@ import Quickshell
 import Quickshell.Io
 import qs.Commons
 import qs.Services.Power
+import qs.Services.UI
 
 Item {
   id: root
@@ -15,6 +16,10 @@ Item {
   property var endEpoch: null  // null → unlimited; number → expiry unix seconds
   property bool thermalGuardActive: false
 
+  // Suppress the enable/disable toast on the first status apply so a session
+  // already running when the shell starts doesn't spuriously "enable" us.
+  property bool _firstStatusApplied: false
+
   // Derived from endEpoch so the countdown ticks with the global Time singleton
   // (free clock-skew / resume handling).
   readonly property int remainingSeconds: {
@@ -26,7 +31,19 @@ Item {
   // --- Idle inhibitor (full scope only) ---
   property bool _idleHeld: false
 
-  onActiveChanged: _syncIdle()
+  onActiveChanged: {
+    _syncIdle();
+    if (_firstStatusApplied) {
+      if (active) {
+        const label = (endEpoch === null) ? "∞" : durationLabel;
+        const desc = scope + " · " + label
+                   + (scope === "full" ? " · display on" : " · display may sleep");
+        ToastService.showNotice("Keep Awake on", desc, "coffee");
+      } else {
+        ToastService.showNotice("Keep Awake off", "", "coffee-off");
+      }
+    }
+  }
   onScopeChanged: _syncIdle()
 
   function _syncIdle() {
@@ -95,25 +112,30 @@ Item {
   }
 
   function _applyStatus(s) {
+    // Assign `active` LAST. The derived `remainingSeconds` reads
+    // `active && endEpoch === null` as the unlimited sentinel, so if
+    // `active` flipped true before `endEpoch` updates, the stale null
+    // would briefly surface as ∞ in bindings and `onActiveChanged`.
     if (!s.active) {
-      root.active = false;
       root.scope = "";
       root.durationLabel = "";
       root.endEpoch = null;
-      return;
+      root.active = false;
+    } else {
+      root.scope = s.scope;
+      root.durationLabel = s.duration_label;
+      root.endEpoch = (s.end_epoch === null || s.end_epoch === undefined) ? null : Number(s.end_epoch);
+      root.active = true;
     }
-    root.active = true;
-    root.scope = s.scope;
-    root.durationLabel = s.duration_label;
-    root.endEpoch = (s.end_epoch === null || s.end_epoch === undefined) ? null : Number(s.end_epoch);
+    root._firstStatusApplied = true;
   }
 
   // --- Actions (invoked by BarWidget / Panel) ---
-  // `silent` suppresses the shell-script notification. Used by the panel when
-  // reconfiguring an already-active session so the user doesn't get a toast
-  // per click.
-  function start(durationSeconds, pickScope, silent) {
-    // Guard: `timeout 0s` in GNU coreutils means unlimited. Reject any
+  // All shell invocations pass --silent; state-change toasts are fired from
+  // `onActiveChanged` above so they trigger for external `system-awake`
+  // callers too (CLI, keybind) without the shell also firing notify-send.
+  function start(durationSeconds, pickScope) {
+    // `timeout 0s` in GNU coreutils means unlimited, so reject any
     // non-positive duration except the explicit -1 "unlimited" sentinel.
     const d = durationSeconds;
     if (d !== -1 && (!Number.isFinite(d) || d < 1)) {
@@ -121,16 +143,12 @@ Item {
       return;
     }
     const durArg = (d === -1) ? "unlimited" : String(Math.floor(d));
-    const args = ["system-awake", "start", durArg, "--scope=" + pickScope];
-    if (silent) args.push("--silent");
-    Quickshell.execDetached(args);
+    Quickshell.execDetached(["system-awake", "start", durArg, "--scope=" + pickScope, "--silent"]);
     Qt.callLater(root._pollStatus);
   }
 
-  function off(silent) {
-    const args = ["system-awake", "off"];
-    if (silent) args.push("--silent");
-    Quickshell.execDetached(args);
+  function off() {
+    Quickshell.execDetached(["system-awake", "off", "--silent"]);
     Qt.callLater(root._pollStatus);
   }
 

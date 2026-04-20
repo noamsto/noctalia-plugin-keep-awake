@@ -58,7 +58,7 @@ Item {
     root.selectedMinutes = minutes;
     if (mainInstance?.active) {
       const secs = (minutes === -1) ? -1 : minutes * 60;
-      mainInstance.start(secs, root.selectedScope, true);
+      mainInstance.start(secs, root.selectedScope);
     }
   }
 
@@ -76,15 +76,15 @@ Item {
     } else {
       dur = (root.selectedMinutes === -1) ? -1 : root.selectedMinutes * 60;
     }
-    mainInstance.start(dur, newScope, true);
+    mainInstance.start(dur, newScope);
   }
 
   function _onMainToggleClicked() {
     if (mainInstance?.active) {
-      mainInstance.off(false);
+      mainInstance.off();
     } else {
       const secs = (root.selectedMinutes === -1) ? -1 : root.selectedMinutes * 60;
-      mainInstance.start(secs, root.selectedScope, false);
+      mainInstance.start(secs, root.selectedScope);
     }
   }
 
