@@ -13,11 +13,11 @@ Item {
   readonly property var mainInstance: pluginApi?.mainInstance
   readonly property bool allowAttach: true
 
-  // Selected duration in minutes (-1 for unlimited). Mirrors active session
-  // when one is running; otherwise a local "what to use on turn-on" state.
+  // Selection state. While a session is active, the panel snapshots the
+  // session's values on open/(re)activation; clicking a button locally
+  // mutates these and either silently reconfigures (if active) or serves
+  // as the start arg (if off).
   property int selectedMinutes: _initialSelectedMinutes()
-
-  // Selected scope. Same semantics as selectedMinutes.
   property string selectedScope: mainInstance?.active
     ? mainInstance.scope
     : (mainInstance?.defaultScope ?? "partial")
@@ -30,41 +30,33 @@ Item {
         root.selectedMinutes = root._minutesFromState();
       }
     }
-    function onDurationLabelChanged() {
-      if (mainInstance.active) root.selectedMinutes = root._minutesFromState();
-    }
-    function onScopeChanged() {
-      if (mainInstance.active) root.selectedScope = mainInstance.scope;
-    }
   }
 
   function _initialSelectedMinutes() {
     if (mainInstance?.active) return _minutesFromState();
-    const list = mainInstance?.durations ?? [30, 60, 120, 240, 480];
-    return list[0] ?? 30;
+    return mainInstance?.durations?.[0] ?? 30;
   }
 
   function _minutesFromState() {
-    if (!mainInstance?.active) return root.selectedMinutes;
     if (mainInstance.endEpoch === null) return -1;  // unlimited
-    // Match the active session to the nearest duration in the list.
     const list = mainInstance.durations ?? [];
     const label = mainInstance.durationLabel;
     for (const m of list) if (root._formatMinutes(m) === label) return m;
     return list[0] ?? 30;
   }
 
+  // Mirrors the shell's format_label — keep in sync for label matching.
   function _formatMinutes(m) {
     if (m === -1) return "∞";
     if (m < 60) return m + "m";
     if (m % 60 === 0) return (m / 60) + "h";
-    return Math.floor(m / 60) + "h" + (m % 60) + "m";
+    const mm = m % 60;
+    return Math.floor(m / 60) + "h" + (mm < 10 ? "0" + mm : mm) + "m";
   }
 
   function _onDurationClicked(minutes) {
     root.selectedMinutes = minutes;
     if (mainInstance?.active) {
-      // Silent reconfigure — no "enabled" toast on every click.
       const secs = (minutes === -1) ? -1 : minutes * 60;
       mainInstance.start(secs, root.selectedScope, true);
     }
@@ -73,26 +65,32 @@ Item {
   function _onScopeToggled(keepDisplayAwake) {
     const newScope = keepDisplayAwake ? "full" : "partial";
     root.selectedScope = newScope;
-    if (mainInstance?.active) {
-      // Preserve remaining time; only the scope changes.
-      const dur = (mainInstance.endEpoch === null) ? -1 : mainInstance.remainingSeconds;
-      mainInstance.start(dur, newScope, true);
+    if (!mainInstance?.active) return;
+    // Preserve remaining time; fall back to the selected duration if the
+    // poll's remainingSeconds is 0 (`timeout 0s` would mean unlimited).
+    let dur;
+    if (mainInstance.endEpoch === null) {
+      dur = -1;
+    } else if (mainInstance.remainingSeconds >= 1) {
+      dur = mainInstance.remainingSeconds;
+    } else {
+      dur = (root.selectedMinutes === -1) ? -1 : root.selectedMinutes * 60;
     }
+    mainInstance.start(dur, newScope, true);
   }
 
   function _onMainToggleClicked() {
     if (mainInstance?.active) {
-      mainInstance.off(false);  // user-initiated → toast
+      mainInstance.off(false);
     } else {
       const secs = (root.selectedMinutes === -1) ? -1 : root.selectedMinutes * 60;
-      mainInstance.start(secs, root.selectedScope, false);  // user-initiated → toast
+      mainInstance.start(secs, root.selectedScope, false);
     }
   }
 
-  Rectangle {
+  Item {
     id: panelContainer
     anchors.fill: parent
-    color: "transparent"
 
     ColumnLayout {
       id: contentCol
@@ -146,7 +144,7 @@ Item {
 
         Repeater {
           model: {
-            const base = mainInstance ? mainInstance.durations.slice() : [30, 60, 120, 240, 480];
+            const base = (mainInstance?.durations ?? []).slice();
             const arr = base.map(m => ({ minutes: m, label: root._formatMinutes(m) }));
             if (mainInstance?.includeUnlimited) arr.push({ minutes: -1, label: "∞" });
             return arr;

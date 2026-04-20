@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import qs.Commons
 import qs.Services.Power
 
 Item {
@@ -11,9 +12,16 @@ Item {
   property bool active: false
   property string scope: "partial"
   property string durationLabel: ""
-  property var endEpoch: null  // null for unlimited, number otherwise
-  property int remainingSeconds: 0
+  property var endEpoch: null  // null → unlimited; number → expiry unix seconds
   property bool thermalGuardActive: false
+
+  // Derived from endEpoch so the countdown ticks with the global Time singleton
+  // (free clock-skew / resume handling).
+  readonly property int remainingSeconds: {
+    if (!active) return 0;
+    if (endEpoch === null) return -1;  // unlimited sentinel
+    return Math.max(0, endEpoch - Time.timestamp);
+  }
 
   // --- Idle inhibitor (full scope only) ---
   property bool _idleHeld: false
@@ -46,7 +54,7 @@ Item {
   property bool activateOnLeftClick: cfg.activateOnLeftClick ?? defaults.activateOnLeftClick ?? false
   property int quickExtendMinutes: cfg.quickExtendMinutes ?? defaults.quickExtendMinutes ?? 30
 
-  // --- Poller ---
+  // --- Pollers ---
   Process {
     id: statusProc
     running: false
@@ -54,8 +62,7 @@ Item {
     stdout: StdioCollector {
       onStreamFinished: {
         try {
-          const s = JSON.parse(this.text.trim() || "{}");
-          root._applyStatus(s);
+          root._applyStatus(JSON.parse(this.text.trim() || "{}"));
         } catch (e) {
           console.warn("keep-awake-plus: failed to parse status:", e, "text:", this.text);
         }
@@ -70,25 +77,21 @@ Item {
     onExited: function(exitCode) { root.thermalGuardActive = (exitCode === 0); }
   }
 
+  function _pollStatus() { if (!statusProc.running) statusProc.running = true; }
+  function _pollGuard()  { if (!guardProc.running)  guardProc.running  = true; }
+
   Timer {
-    id: poller
-    interval: 1000
-    repeat: true
-    running: true
-    triggeredOnStart: true
-    onTriggered: { statusProc.running = true; guardProc.running = true; }
+    id: statusPoller
+    interval: 1000; repeat: true; running: true; triggeredOnStart: true
+    onTriggered: root._pollStatus()
   }
 
-  // Countdown decrement between polls, to avoid visible jitter.
+  // Thermal-guard state changes on minute-scale and is only read on tooltip
+  // hover, so polling it every second is wasted process spawns.
   Timer {
-    interval: 1000
-    repeat: true
-    running: root.active && root.endEpoch !== null
-    onTriggered: {
-      if (root.endEpoch === null) return;
-      const now = Math.floor(Date.now() / 1000);
-      root.remainingSeconds = Math.max(0, root.endEpoch - now);
-    }
+    id: guardPoller
+    interval: 15000; repeat: true; running: true; triggeredOnStart: true
+    onTriggered: root._pollGuard()
   }
 
   function _applyStatus(s) {
@@ -97,56 +100,53 @@ Item {
       root.scope = "";
       root.durationLabel = "";
       root.endEpoch = null;
-      root.remainingSeconds = 0;
       return;
     }
     root.active = true;
     root.scope = s.scope;
     root.durationLabel = s.duration_label;
-    if (s.end_epoch === null || s.end_epoch === undefined) {
-      root.endEpoch = null;
-      root.remainingSeconds = -1;  // signal "unlimited" to view layer
-    } else {
-      root.endEpoch = Number(s.end_epoch);
-      const now = Math.floor(Date.now() / 1000);
-      root.remainingSeconds = Math.max(0, root.endEpoch - now);
-    }
+    root.endEpoch = (s.end_epoch === null || s.end_epoch === undefined) ? null : Number(s.end_epoch);
   }
 
   // --- Actions (invoked by BarWidget / Panel) ---
   // `silent` suppresses the shell-script notification. Used by the panel when
-  // reconfiguring an already-active session (changing duration or scope) so
-  // the user doesn't get a toast per click.
+  // reconfiguring an already-active session so the user doesn't get a toast
+  // per click.
   function start(durationSeconds, pickScope, silent) {
-    const durArg = (durationSeconds === -1) ? "unlimited" : String(durationSeconds);
+    // Guard: `timeout 0s` in GNU coreutils means unlimited. Reject any
+    // non-positive duration except the explicit -1 "unlimited" sentinel.
+    const d = durationSeconds;
+    if (d !== -1 && (!Number.isFinite(d) || d < 1)) {
+      console.warn("keep-awake-plus: refused start with invalid duration:", d);
+      return;
+    }
+    const durArg = (d === -1) ? "unlimited" : String(Math.floor(d));
     const args = ["system-awake", "start", durArg, "--scope=" + pickScope];
     if (silent) args.push("--silent");
     Quickshell.execDetached(args);
-    Qt.callLater(() => { statusProc.running = true; });
+    Qt.callLater(root._pollStatus);
   }
 
   function off(silent) {
     const args = ["system-awake", "off"];
     if (silent) args.push("--silent");
     Quickshell.execDetached(args);
-    Qt.callLater(() => { statusProc.running = true; });
+    Qt.callLater(root._pollStatus);
   }
 
   function extend(seconds) {
     Quickshell.execDetached(["system-awake", "extend", String(seconds)]);
-    Qt.callLater(() => { statusProc.running = true; });
+    Qt.callLater(root._pollStatus);
   }
 
   function toggleLast() {
     Quickshell.execDetached(["system-awake", "toggle-last"]);
-    Qt.callLater(() => { statusProc.running = true; });
+    Qt.callLater(root._pollStatus);
   }
 
   function formatRemaining() {
     if (!active) return "";
     if (remainingSeconds === -1) return "∞";
-    const m = Math.floor(remainingSeconds / 60);
-    if (m >= 60) return Math.floor(m / 60) + "h" + String(m % 60).padStart(2, "0") + "m";
-    return m + "m";
+    return Time.formatVagueHumanReadableDuration(remainingSeconds);
   }
 }
