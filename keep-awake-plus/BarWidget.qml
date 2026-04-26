@@ -24,6 +24,10 @@ Item {
   implicitWidth: pill.implicitWidth
   implicitHeight: pill.implicitHeight
 
+  // Hide on the bar when inhibit is off — the toggle lives in ControlCenter;
+  // the bar entry surfaces scope/remaining-time while armed.
+  visible: root.active
+
   function buildTooltip() {
     if (!root.active) return "Keep Awake · off";
     const tg = (mainInstance && mainInstance.thermalGuardActive) ? "active" : "off";
