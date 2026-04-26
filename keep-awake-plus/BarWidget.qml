@@ -40,6 +40,7 @@ Item {
       ? (root.scope === "full" ? Color.mPrimary : Color.mSecondary)
       : Color.mOnSurface
     oppositeDirection: BarService.getPillDirection(root)
+    onEntered: { if (mainInstance) mainInstance.pollGuard(); }
     onClicked: {
       if (root.activateOnLeftClick) {
         if (mainInstance) mainInstance.toggleLast();

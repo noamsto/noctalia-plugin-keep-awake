@@ -7,17 +7,14 @@ ColumnLayout {
   id: root
   property var pluginApi: null
 
-  readonly property var cfg: pluginApi?.pluginSettings || ({})
-  readonly property var defaults: pluginApi?.manifest?.metadata?.defaultSettings || ({})
+  readonly property var cfg: pluginApi?.pluginSettings ?? ({})
 
-  function _get(key, fallback) { return cfg[key] ?? defaults[key] ?? fallback; }
-
-  property string defaultScope: _get("defaultScope", "partial")
-  property bool showRemainingText: _get("showRemainingText", true)
-  property bool activateOnLeftClick: _get("activateOnLeftClick", false)
-  property int quickExtendMinutes: _get("quickExtendMinutes", 30)
-  property bool includeUnlimited: _get("includeUnlimited", true)
-  property string durationsCsv: (_get("durations", [])).join(", ")
+  property string defaultScope: cfg.defaultScope ?? "partial"
+  property bool showRemainingText: cfg.showRemainingText ?? true
+  property bool activateOnLeftClick: cfg.activateOnLeftClick ?? false
+  property int quickExtendMinutes: cfg.quickExtendMinutes ?? 30
+  property bool includeUnlimited: cfg.includeUnlimited ?? true
+  property string durationsCsv: (cfg.durations ?? []).join(", ")
 
   spacing: Style.marginL
 

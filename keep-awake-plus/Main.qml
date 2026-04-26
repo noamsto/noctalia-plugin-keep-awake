@@ -67,15 +67,15 @@ Item {
     if (_idleHeld) IdleInhibitorService.removeInhibitor("keep-awake-plus");
   }
 
-  // --- Settings (from manifest metadata + pluginApi overrides) ---
-  property var cfg: pluginApi?.pluginSettings || ({})
-  property var defaults: pluginApi?.manifest?.metadata?.defaultSettings || ({})
-  property string defaultScope: cfg.defaultScope ?? defaults.defaultScope ?? "partial"
-  property var durations: cfg.durations ?? defaults.durations ?? [30, 60, 120, 240, 480]
-  property bool includeUnlimited: cfg.includeUnlimited ?? defaults.includeUnlimited ?? true
-  property bool showRemainingText: cfg.showRemainingText ?? defaults.showRemainingText ?? true
-  property bool activateOnLeftClick: cfg.activateOnLeftClick ?? defaults.activateOnLeftClick ?? false
-  property int quickExtendMinutes: cfg.quickExtendMinutes ?? defaults.quickExtendMinutes ?? 30
+  // PluginService merges manifest's defaultSettings into pluginSettings, so
+  // these are already populated when pluginApi is set.
+  readonly property var cfg: pluginApi?.pluginSettings ?? ({})
+  readonly property string defaultScope: cfg.defaultScope ?? "partial"
+  readonly property var durations: cfg.durations ?? []
+  readonly property bool includeUnlimited: cfg.includeUnlimited ?? true
+  readonly property bool showRemainingText: cfg.showRemainingText ?? true
+  readonly property bool activateOnLeftClick: cfg.activateOnLeftClick ?? false
+  readonly property int quickExtendMinutes: cfg.quickExtendMinutes ?? 30
 
   // --- Pollers ---
   Process {
@@ -101,20 +101,12 @@ Item {
   }
 
   function _pollStatus() { if (!statusProc.running) statusProc.running = true; }
-  function _pollGuard()  { if (!guardProc.running)  guardProc.running  = true; }
+  function pollGuard()   { if (!guardProc.running)  guardProc.running  = true; }
 
   Timer {
     id: statusPoller
     interval: 1000; repeat: true; running: true; triggeredOnStart: true
     onTriggered: root._pollStatus()
-  }
-
-  // Thermal-guard state changes on minute-scale and is only read on tooltip
-  // hover, so polling it every second is wasted process spawns.
-  Timer {
-    id: guardPoller
-    interval: 15000; repeat: true; running: true; triggeredOnStart: true
-    onTriggered: root._pollGuard()
   }
 
   function _applyStatus(s) {
@@ -144,10 +136,10 @@ Item {
   // All shell invocations pass --silent; state-change toasts are fired from
   // `onActiveChanged` above so they trigger for external `system-awake`
   // callers too (CLI, keybind) without the shell also firing notify-send.
-  // Mirrors the shell's format_label so the optimistic durationLabel
-  // matches what the next poll will write — otherwise the panel's
-  // label-based minutes match fails briefly during reconfigure.
-  function _shellLabel(seconds) {
+
+  // Mirrors the shell's format_label. Public so the panel's label-based
+  // minutes match doesn't drift from what the next poll will write.
+  function formatLabel(seconds) {
     if (seconds === -1) return "∞";
     if (seconds >= 3600) {
       const h = Math.floor(seconds / 3600);
@@ -173,7 +165,7 @@ Item {
     // icon color + countdown update on click, not 100-300ms later when
     // the shell finishes writing state.json. The next poll confirms.
     root.scope = pickScope;
-    root.durationLabel = _shellLabel(d);
+    root.durationLabel = formatLabel(d);
     root.endEpoch = (d === -1) ? null : Math.floor(Date.now() / 1000) + Math.floor(d);
     root.active = true;
 

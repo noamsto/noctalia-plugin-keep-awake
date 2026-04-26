@@ -12,13 +12,14 @@ Item {
   property real contentPreferredHeight: contentCol.implicitHeight + Style.marginM * 2
   readonly property var mainInstance: pluginApi?.mainInstance
   readonly property bool allowAttach: true
+  readonly property bool active: mainInstance ? mainInstance.active : false
 
   // Selection state. While a session is active, the panel snapshots the
   // session's values on open/(re)activation; clicking a button locally
   // mutates these and either silently reconfigures (if active) or serves
   // as the start arg (if off).
   property int selectedMinutes: _initialSelectedMinutes()
-  property string selectedScope: mainInstance?.active
+  property string selectedScope: root.active
     ? mainInstance.scope
     : (mainInstance?.defaultScope ?? "partial")
 
@@ -33,7 +34,7 @@ Item {
   }
 
   function _initialSelectedMinutes() {
-    if (mainInstance?.active) return _minutesFromState();
+    if (root.active) return _minutesFromState();
     return mainInstance?.durations?.[0] ?? 30;
   }
 
@@ -41,22 +42,13 @@ Item {
     if (mainInstance.endEpoch === null) return -1;  // unlimited
     const list = mainInstance.durations ?? [];
     const label = mainInstance.durationLabel;
-    for (const m of list) if (root._formatMinutes(m) === label) return m;
+    for (const m of list) if (mainInstance.formatLabel(m * 60) === label) return m;
     return list[0] ?? 30;
-  }
-
-  // Mirrors the shell's format_label — keep in sync for label matching.
-  function _formatMinutes(m) {
-    if (m === -1) return "∞";
-    if (m < 60) return m + "m";
-    if (m % 60 === 0) return (m / 60) + "h";
-    const mm = m % 60;
-    return Math.floor(m / 60) + "h" + (mm < 10 ? "0" + mm : mm) + "m";
   }
 
   function _onDurationClicked(minutes) {
     root.selectedMinutes = minutes;
-    if (mainInstance?.active) {
+    if (root.active) {
       const secs = (minutes === -1) ? -1 : minutes * 60;
       mainInstance.start(secs, root.selectedScope);
     }
@@ -65,7 +57,7 @@ Item {
   function _onScopeToggled(keepDisplayAwake) {
     const newScope = keepDisplayAwake ? "full" : "partial";
     root.selectedScope = newScope;
-    if (!mainInstance?.active) return;
+    if (!root.active) return;
     // Preserve remaining time; fall back to the selected duration if the
     // poll's remainingSeconds is 0 (`timeout 0s` would mean unlimited).
     let dur;
@@ -80,7 +72,7 @@ Item {
   }
 
   function _onMainToggleClicked() {
-    if (mainInstance?.active) {
+    if (root.active) {
       mainInstance.off();
     } else {
       const secs = (root.selectedMinutes === -1) ? -1 : root.selectedMinutes * 60;
@@ -104,9 +96,9 @@ Item {
         spacing: Style.marginS
 
         NIcon {
-          icon: mainInstance?.active ? "coffee" : "coffee-off"
+          icon: root.active ? "coffee" : "coffee-off"
           pointSize: Style.fontSizeXL
-          color: mainInstance?.active
+          color: root.active
             ? (mainInstance.scope === "full" ? Color.mPrimary : Color.mSecondary)
             : Color.mOnSurfaceVariant
         }
@@ -122,7 +114,7 @@ Item {
             color: Color.mOnSurface
           }
           NText {
-            text: mainInstance?.active
+            text: root.active
               ? (mainInstance.formatRemaining() + " remaining"
                   + (mainInstance.scope === "full" ? " · display on" : " · display may sleep"))
               : "Off"
@@ -145,7 +137,7 @@ Item {
         Repeater {
           model: {
             const base = (mainInstance?.durations ?? []).slice();
-            const arr = base.map(m => ({ minutes: m, label: root._formatMinutes(m) }));
+            const arr = base.map(m => ({ minutes: m, label: mainInstance.formatLabel(m * 60) }));
             if (mainInstance?.includeUnlimited) arr.push({ minutes: -1, label: "∞" });
             return arr;
           }
@@ -163,39 +155,102 @@ Item {
       }
 
       // ───────────── Keep-display-awake toggle ─────────────
-      NToggle {
-        Layout.fillWidth: true
-        Layout.topMargin: Style.marginS
-        label: "Keep display awake"
-        description: "When off, monitor may dim/sleep while system stays awake"
-        icon: root.selectedScope === "full" ? "sun" : "moon"
-        checked: root.selectedScope === "full"
-        onToggled: checked => root._onScopeToggled(checked)
-      }
-
-      // ───────────── Bottom action row ─────────────
       RowLayout {
         Layout.fillWidth: true
         Layout.topMargin: Style.marginS
         spacing: Style.marginS
 
-        NButton {
-          Layout.fillWidth: true
-          visible: (mainInstance?.active ?? false) && mainInstance.endEpoch !== null
-          text: "+" + (mainInstance?.quickExtendMinutes ?? 30) + "m"
-          icon: "clock-plus"
-          outlined: true
-          backgroundColor: Color.mPrimary
-          textColor: Color.mOnPrimary
-          onClicked: mainInstance.extend((mainInstance.quickExtendMinutes ?? 30) * 60)
+        Item {
+          readonly property real iconSlot: Style.fontSizeXL * 1.4
+          Layout.preferredWidth: iconSlot
+          Layout.preferredHeight: iconSlot
+          Layout.alignment: Qt.AlignVCenter
+
+          NIcon {
+            anchors.centerIn: parent
+            icon: "sun"
+            pointSize: Style.fontSizeXL
+            color: Color.mPrimary
+            opacity: root.selectedScope === "full" ? 1.0 : 0.0
+            rotation: root.selectedScope === "full" ? 0 : -90
+            scale: root.selectedScope === "full" ? 1.0 : 0.6
+            Behavior on opacity { NumberAnimation { duration: Style.animationNormal; easing.type: Easing.OutCubic } }
+            Behavior on rotation { NumberAnimation { duration: Style.animationNormal; easing.type: Easing.OutCubic } }
+            Behavior on scale { NumberAnimation { duration: Style.animationNormal; easing.type: Easing.OutCubic } }
+          }
+          NIcon {
+            anchors.centerIn: parent
+            icon: "moon"
+            pointSize: Style.fontSizeXL
+            color: Color.mSecondary
+            opacity: root.selectedScope === "full" ? 0.0 : 1.0
+            rotation: root.selectedScope === "full" ? 90 : 0
+            scale: root.selectedScope === "full" ? 0.6 : 1.0
+            Behavior on opacity { NumberAnimation { duration: Style.animationNormal; easing.type: Easing.OutCubic } }
+            Behavior on rotation { NumberAnimation { duration: Style.animationNormal; easing.type: Easing.OutCubic } }
+            Behavior on scale { NumberAnimation { duration: Style.animationNormal; easing.type: Easing.OutCubic } }
+          }
         }
 
+        NToggle {
+          Layout.fillWidth: true
+          label: "Keep display awake"
+          description: "When off, monitor may dim/sleep while system stays awake"
+          checked: root.selectedScope === "full"
+          onToggled: checked => root._onScopeToggled(checked)
+        }
+      }
+
+      // ───────────── Bottom action row ─────────────
+      RowLayout {
+        id: actionRow
+        Layout.fillWidth: true
+        Layout.topMargin: Style.marginS
+        spacing: Style.marginS
+
+        // Animated slot for the extend button — width grows/collapses instead
+        // of popping. Keeps the main button's visible center stable.
+        Item {
+          id: extendSlot
+          readonly property bool shown: root.active && mainInstance.endEpoch !== null
+          readonly property real slotWidth: Math.max(0, (actionRow.width - actionRow.spacing) / 2)
+          Layout.preferredWidth: shown ? slotWidth : 0
+          Layout.preferredHeight: extendBtn.implicitHeight
+          Layout.alignment: Qt.AlignVCenter
+          clip: true
+
+          Behavior on Layout.preferredWidth {
+            NumberAnimation { duration: Style.animationNormal; easing.type: Easing.OutCubic }
+          }
+
+          NButton {
+            id: extendBtn
+            width: extendSlot.slotWidth
+            height: extendSlot.height
+            text: "+" + (mainInstance?.quickExtendMinutes ?? 30) + "m"
+            icon: "clock-plus"
+            outlined: true
+            backgroundColor: Color.mPrimary
+            textColor: Color.mOnPrimary
+            opacity: extendSlot.shown ? 1.0 : 0.0
+            enabled: opacity > 0.5
+            onClicked: mainInstance.extend((mainInstance.quickExtendMinutes ?? 30) * 60)
+
+            Behavior on opacity {
+              NumberAnimation { duration: Style.animationNormal; easing.type: Easing.OutCubic }
+            }
+          }
+        }
+
+        // Single button: colors morph in place via NButton's Behavior on
+        // color. Crossfading two stacked NButtons fights NButton's internal
+        // enabled→opacity step and produces a visible kick at the 50% mark.
         NButton {
           Layout.fillWidth: true
-          text: (mainInstance?.active ?? false) ? "Turn off" : "Turn on"
+          text: root.active ? "Turn off" : "Turn on"
           icon: "power"
-          backgroundColor: (mainInstance?.active ?? false) ? Color.mError : Color.mPrimary
-          textColor: (mainInstance?.active ?? false) ? Color.mOnError : Color.mOnPrimary
+          backgroundColor: root.active ? Color.mError : Color.mPrimary
+          textColor: root.active ? Color.mOnError : Color.mOnPrimary
           onClicked: root._onMainToggleClicked()
         }
       }
