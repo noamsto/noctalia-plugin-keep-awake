@@ -16,6 +16,10 @@ Item {
   property var endEpoch: null  // null → unlimited; number → expiry unix seconds
   property bool thermalGuardActive: false
 
+  // Set true once we've confirmed `system-awake` exists in PATH. Until then,
+  // pollers stay idle to avoid log-spamming a misconfigured user.
+  property bool _binaryAvailable: false
+
   // Suppress the enable/disable toast on the first status apply so a session
   // already running when the shell starts doesn't spuriously "enable" us.
   property bool _firstStatusApplied: false
@@ -79,6 +83,23 @@ Item {
 
   // --- Pollers ---
   Process {
+    id: probeProc
+    running: false
+    command: ["sh", "-c", "command -v system-awake"]
+    onExited: function(exitCode) {
+      if (exitCode === 0) {
+        root._binaryAvailable = true;
+      } else {
+        ToastService.showError("Keep Awake+",
+          "system-awake binary not found in PATH — plugin disabled. " +
+          "See https://github.com/noamsto/nix-config for the host-side script.");
+      }
+    }
+  }
+
+  Component.onCompleted: probeProc.running = true
+
+  Process {
     id: statusProc
     running: false
     command: ["system-awake", "status", "--json"]
@@ -105,7 +126,7 @@ Item {
 
   Timer {
     id: statusPoller
-    interval: 1000; repeat: true; running: true; triggeredOnStart: true
+    interval: 1000; repeat: true; running: root._binaryAvailable; triggeredOnStart: true
     onTriggered: root._pollStatus()
   }
 
