@@ -4,7 +4,6 @@
   "version": "0.1.0",
   "minNoctaliaVersion": "3.6.0",
   "author": "Noam Stolero",
-  "official": false,
   "license": "MIT",
   "repository": "https://github.com/noamsto/noctalia-plugin-keep-awake",
   "description": "Duration+scope Keep Awake with persistent last-choice and partial/full inhibit modes.",
