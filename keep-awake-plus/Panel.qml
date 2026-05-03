@@ -220,7 +220,7 @@ Item {
           clip: true
 
           Behavior on Layout.preferredWidth {
-            NumberAnimation { duration: Style.animationNormal; easing.type: Easing.OutCubic }
+            NumberAnimation { duration: Style.animationFast; easing.type: Easing.OutCubic }
           }
 
           NButton {
@@ -245,12 +245,18 @@ Item {
         // Single button: colors morph in place via NButton's Behavior on
         // color. Crossfading two stacked NButtons fights NButton's internal
         // enabled→opacity step and produces a visible kick at the 50% mark.
+        // When inactive, the tint mirrors the bar pill so the user can
+        // preview which scope the button is about to activate.
         NButton {
           Layout.fillWidth: true
           text: root.active ? "Turn off" : "Turn on"
           icon: "power"
-          backgroundColor: root.active ? Color.mError : Color.mPrimary
-          textColor: root.active ? Color.mOnError : Color.mOnPrimary
+          backgroundColor: root.active
+            ? Color.mError
+            : (root.selectedScope === "full" ? Color.mPrimary : Color.mSecondary)
+          textColor: root.active
+            ? Color.mOnError
+            : (root.selectedScope === "full" ? Color.mOnPrimary : Color.mOnSecondary)
           onClicked: root._onMainToggleClicked()
         }
       }

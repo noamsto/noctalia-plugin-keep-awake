@@ -22,17 +22,27 @@ duration, pick a scope, extend on the fly.
 
 ## Requirements
 
-This plugin shells out to a host-side `system-awake` script (a small wrapper
-around `systemd-inhibit` + `swayidle` / scope-specific tooling). It is **not**
-bundled with Noctalia.
+This plugin shells out to a host-side `system-awake` script that wraps
+`systemd-inhibit`, manages session state, and re-evaluates lid state on
+natural timer expiry to trigger suspend (since neither logind nor
+`hyprdynamicmonitors` / `hypridle` re-fire after our inhibit lock releases).
 
-You can find the script — and a NixOS module that installs it as a systemd
-service with an optional thermal-guard — at:
+A portable reference implementation is bundled at
+[`scripts/system-awake`](scripts/system-awake). Install it on your `$PATH`:
 
-> https://github.com/noamsto/nix-config
+```sh
+install -m 755 scripts/system-awake ~/.local/bin/system-awake
+```
 
-If `system-awake` is not in `PATH` at startup, the plugin disables its pollers
-and shows a one-time error toast pointing at the repo above.
+Required runtime tools: `bash`, `coreutils`, `procps`, `util-linux`,
+`systemd`, `jq`. Optional: `glib` (for UPower lid checks) and `libnotify`
+(for toasts).
+
+For the Nix flavor — packaged with a thermal-guard service and integrated
+into a Hyprland setup — see <https://github.com/noamsto/nix-config>.
+
+If `system-awake` is not in `PATH` at startup, the plugin disables its
+pollers and shows a one-time error toast.
 
 ## Settings
 

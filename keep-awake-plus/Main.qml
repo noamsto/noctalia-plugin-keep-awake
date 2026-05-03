@@ -1,8 +1,8 @@
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import Quickshell.Wayland
 import qs.Commons
-import qs.Services.Power
 import qs.Services.UI
 
 Item {
@@ -38,11 +38,37 @@ Item {
     return Math.max(0, endEpoch - Time.timestamp);
   }
 
-  // --- Idle inhibitor (full scope only) ---
-  property bool _idleHeld: false
+  // --- Wayland idle inhibitor ---
+  // 1x1 transparent layer-shell surface that hosts a real
+  // zwp_idle_inhibit_manager_v1 inhibitor. Mapped iff we want the
+  // compositor to treat the user as not idle:
+  //   * full scope    : mapped for the entire session
+  //                     (display stays on, idle daemons paused)
+  //   * partial scope : briefly mapped post-expiry to re-arm idle daemons
+  //                     whose on-timeout was consumed during the session
+  //
+  // Compositor-agnostic — every conforming idle daemon (hypridle, swayidle,
+  // gnome-session-idle, …) reacts to the protocol-level resume edge.
+  PanelWindow {
+    id: inhibitorWindow
+    screen: Quickshell.screens.length > 0 ? Quickshell.screens[0] : null
+    visible: (root.active && root.scope === "full") || pulseTimer.running
+    implicitWidth: 1
+    implicitHeight: 1
+    color: "transparent"
+    WlrLayershell.layer: WlrLayer.Background
+    WlrLayershell.namespace: "noctalia-keep-awake-plus"
+    WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
+
+    IdleInhibitor {
+      window: inhibitorWindow
+      enabled: inhibitorWindow.visible
+    }
+  }
+
+  Timer { id: pulseTimer; interval: 150 }
 
   onActiveChanged: {
-    _syncIdle();
     if (_firstStatusApplied) {
       if (active) {
         const label = (endEpoch === null) ? "∞" : durationLabel;
@@ -53,22 +79,6 @@ Item {
         ToastService.showNotice("Keep Awake off", "", "coffee-off");
       }
     }
-  }
-  onScopeChanged: _syncIdle()
-
-  function _syncIdle() {
-    const shouldHold = active && scope === "full";
-    if (shouldHold && !_idleHeld) {
-      IdleInhibitorService.addInhibitor("keep-awake-plus", "Keep Awake+ full scope");
-      _idleHeld = true;
-    } else if (!shouldHold && _idleHeld) {
-      IdleInhibitorService.removeInhibitor("keep-awake-plus");
-      _idleHeld = false;
-    }
-  }
-
-  Component.onDestruction: {
-    if (_idleHeld) IdleInhibitorService.removeInhibitor("keep-awake-plus");
   }
 
   // PluginService merges manifest's defaultSettings into pluginSettings, so
@@ -92,7 +102,8 @@ Item {
       } else {
         ToastService.showError("Keep Awake+",
           "system-awake binary not found in PATH — plugin disabled. " +
-          "See https://github.com/noamsto/nix-config for the host-side script.");
+          "Install scripts/system-awake from this plugin into your PATH " +
+          "(e.g., ~/.local/bin/system-awake) and reload.");
       }
     }
   }
@@ -140,10 +151,17 @@ Item {
       // briefly tears state down before writing the new state. Ignore the
       // transient off window so the bar widget doesn't flicker.
       if (root.active && (Date.now() - root._lastStartMs) < 2000) return;
+      // Capture pre-mutation state to decide whether to pulse the idle
+      // inhibitor (re-arms idle daemons whose on-timeout was consumed).
+      // Full scope's binding already produces an unmap edge when
+      // `scope` clears, so only partial scope needs an explicit pulse.
+      const wasActive = root.active;
+      const pulse = wasActive && root.scope !== "full";
       root.scope = "";
       root.durationLabel = "";
       root.endEpoch = null;
       root.active = false;
+      if (pulse && root._firstStatusApplied) pulseTimer.restart();
     } else {
       root.scope = s.scope;
       root.durationLabel = s.duration_label;
