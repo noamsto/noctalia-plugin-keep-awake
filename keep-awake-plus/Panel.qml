@@ -22,6 +22,7 @@ Item {
   property string selectedScope: root.active
     ? mainInstance.scope
     : (mainInstance?.defaultScope ?? "partial")
+  readonly property bool selectedScopeIsFull: selectedScope === "full"
 
   Connections {
     target: mainInstance
@@ -147,8 +148,8 @@ Item {
             fontSize: Style.fontSizeM
             readonly property bool isSelected: modelData.minutes === root.selectedMinutes
             outlined: !isSelected
-            backgroundColor: root.selectedScope === "full" ? Color.mPrimary : Color.mSecondary
-            textColor: root.selectedScope === "full" ? Color.mOnPrimary : Color.mOnSecondary
+            backgroundColor: root.selectedScopeIsFull ? Color.mPrimary : Color.mSecondary
+            textColor: root.selectedScopeIsFull ? Color.mOnPrimary : Color.mOnSecondary
             onClicked: root._onDurationClicked(modelData.minutes)
           }
         }
@@ -171,9 +172,9 @@ Item {
             icon: "sun"
             pointSize: Style.fontSizeXL
             color: Color.mPrimary
-            opacity: root.selectedScope === "full" ? 1.0 : 0.0
-            rotation: root.selectedScope === "full" ? 0 : -90
-            scale: root.selectedScope === "full" ? 1.0 : 0.6
+            opacity: root.selectedScopeIsFull ? 1.0 : 0.0
+            rotation: root.selectedScopeIsFull ? 0 : -90
+            scale: root.selectedScopeIsFull ? 1.0 : 0.6
             Behavior on opacity { NumberAnimation { duration: Style.animationNormal; easing.type: Easing.OutCubic } }
             Behavior on rotation { NumberAnimation { duration: Style.animationNormal; easing.type: Easing.OutCubic } }
             Behavior on scale { NumberAnimation { duration: Style.animationNormal; easing.type: Easing.OutCubic } }
@@ -183,9 +184,9 @@ Item {
             icon: "moon"
             pointSize: Style.fontSizeXL
             color: Color.mSecondary
-            opacity: root.selectedScope === "full" ? 0.0 : 1.0
-            rotation: root.selectedScope === "full" ? 90 : 0
-            scale: root.selectedScope === "full" ? 0.6 : 1.0
+            opacity: root.selectedScopeIsFull ? 0.0 : 1.0
+            rotation: root.selectedScopeIsFull ? 90 : 0
+            scale: root.selectedScopeIsFull ? 0.6 : 1.0
             Behavior on opacity { NumberAnimation { duration: Style.animationNormal; easing.type: Easing.OutCubic } }
             Behavior on rotation { NumberAnimation { duration: Style.animationNormal; easing.type: Easing.OutCubic } }
             Behavior on scale { NumberAnimation { duration: Style.animationNormal; easing.type: Easing.OutCubic } }
@@ -196,68 +197,70 @@ Item {
           Layout.fillWidth: true
           label: "Keep display awake"
           description: "When off, monitor may dim/sleep while system stays awake"
-          checked: root.selectedScope === "full"
+          checked: root.selectedScopeIsFull
           onToggled: checked => root._onScopeToggled(checked)
         }
       }
 
       // ───────────── Bottom action row ─────────────
-      RowLayout {
+      // Anchor-based instead of RowLayout: avoids the per-frame layout
+      // reflow that made `Layout.fillWidth` + sibling preferredWidth
+      // animation feel laggy. Both buttons drive width directly via
+      // bindings + Behavior, animated on the render thread.
+      Item {
         id: actionRow
         Layout.fillWidth: true
         Layout.topMargin: Style.marginS
-        spacing: Style.marginS
+        Layout.preferredHeight: mainBtn.implicitHeight
 
-        // Animated slot for the extend button — width grows/collapses instead
-        // of popping. Keeps the main button's visible center stable.
-        Item {
-          id: extendSlot
-          readonly property bool shown: root.active && mainInstance.endEpoch !== null
-          readonly property real slotWidth: Math.max(0, (actionRow.width - actionRow.spacing) / 2)
-          Layout.preferredWidth: shown ? slotWidth : 0
-          Layout.preferredHeight: extendBtn.implicitHeight
-          Layout.alignment: Qt.AlignVCenter
-          clip: true
+        readonly property bool extendShown: root.active && mainInstance.endEpoch !== null
+        readonly property real halfWidth: (width - Style.marginS) / 2
 
-          Behavior on Layout.preferredWidth {
-            NumberAnimation { duration: Style.animationFast; easing.type: Easing.OutCubic }
-          }
+        NButton {
+          id: extendBtn
+          anchors.left: parent.left
+          anchors.verticalCenter: parent.verticalCenter
+          width: actionRow.halfWidth
+          height: implicitHeight
+          opacity: actionRow.extendShown ? 1.0 : 0.0
+          enabled: actionRow.extendShown
+          text: "+" + (mainInstance?.quickExtendMinutes ?? 30) + "m"
+          icon: "clock-plus"
+          outlined: true
+          backgroundColor: Color.mPrimary
+          textColor: Color.mOnPrimary
+          onClicked: mainInstance.extend((mainInstance.quickExtendMinutes ?? 30) * 60)
 
-          NButton {
-            id: extendBtn
-            width: extendSlot.slotWidth
-            height: extendSlot.height
-            text: "+" + (mainInstance?.quickExtendMinutes ?? 30) + "m"
-            icon: "clock-plus"
-            outlined: true
-            backgroundColor: Color.mPrimary
-            textColor: Color.mOnPrimary
-            opacity: extendSlot.shown ? 1.0 : 0.0
-            enabled: opacity > 0.5
-            onClicked: mainInstance.extend((mainInstance.quickExtendMinutes ?? 30) * 60)
-
-            Behavior on opacity {
-              NumberAnimation { duration: Style.animationNormal; easing.type: Easing.OutCubic }
-            }
+          Behavior on opacity {
+            NumberAnimation { duration: Style.animationNormal; easing.type: Easing.InOutCubic }
           }
         }
 
-        // Single button: colors morph in place via NButton's Behavior on
-        // color. Crossfading two stacked NButtons fights NButton's internal
-        // enabled→opacity step and produces a visible kick at the 50% mark.
         // When inactive, the tint mirrors the bar pill so the user can
         // preview which scope the button is about to activate.
         NButton {
-          Layout.fillWidth: true
+          id: mainBtn
+          anchors.right: parent.right
+          anchors.verticalCenter: parent.verticalCenter
+          width: actionRow.extendShown ? actionRow.halfWidth : actionRow.width
+          height: implicitHeight
           text: root.active ? "Turn off" : "Turn on"
           icon: "power"
           backgroundColor: root.active
             ? Color.mError
-            : (root.selectedScope === "full" ? Color.mPrimary : Color.mSecondary)
+            : (root.selectedScopeIsFull ? Color.mPrimary : Color.mSecondary)
           textColor: root.active
             ? Color.mOnError
-            : (root.selectedScope === "full" ? Color.mOnPrimary : Color.mOnSecondary)
+            : (root.selectedScopeIsFull ? Color.mOnPrimary : Color.mOnSecondary)
           onClicked: root._onMainToggleClicked()
+
+          // Suppress one-shot animation on initial panel open (width: 0
+          // → final). Once parent.width is non-zero we're past the
+          // initial layout pass and subsequent toggles animate normally.
+          Behavior on width {
+            enabled: actionRow.width > 0
+            NumberAnimation { duration: Style.animationNormal; easing.type: Easing.InOutCubic }
+          }
         }
       }
     }
